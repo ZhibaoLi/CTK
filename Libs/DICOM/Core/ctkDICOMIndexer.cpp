@@ -59,7 +59,10 @@ static ctkLogger logger("org.commontk.dicom.DICOMIndexer" );
 // ctkDICOMIndexerPrivate methods
 
 //------------------------------------------------------------------------------
-ctkDICOMIndexerPrivate::ctkDICOMIndexerPrivate(ctkDICOMIndexer& o) : q_ptr(&o), Canceled(false)
+ctkDICOMIndexerPrivate::ctkDICOMIndexerPrivate(ctkDICOMIndexer& o)
+  : q_ptr(&o)
+  , Canceled(false)
+  , StartedIndexing(0)
 {
 }
 
@@ -89,47 +92,51 @@ void ctkDICOMIndexer::addFile(ctkDICOMDatabase& database,
                                    const QString filePath,
                                    const QString& destinationDirectoryName)
 {
-  std::cout << filePath.toStdString();
-  if (!destinationDirectoryName.isEmpty())
-  {
-    logger.warn("Ignoring destinationDirectoryName parameter, just taking it as indication we should copy!");
-  }
-
+  ctkDICOMIndexer::ScopedIndexing indexingBatch(*this, database);
   emit indexingFilePath(filePath);
-
-  database.insert(filePath, !destinationDirectoryName.isEmpty(), true);
+  // Ignoring destinationDirectoryName parameter, just taking it as indication we should copy
+  bool copyFileToDatabase = !destinationDirectoryName.isEmpty();
+  database.insert(filePath, copyFileToDatabase, true);
 }
 
 //------------------------------------------------------------------------------
-void ctkDICOMIndexer::addDirectory(ctkDICOMDatabase& ctkDICOMDatabase,
+void ctkDICOMIndexer::addDirectory(ctkDICOMDatabase& database,
                                    const QString& directoryName,
-                                   const QString& destinationDirectoryName)
+                                   const QString& destinationDirectoryName,
+                                   bool includeHidden/*=true*/)
 {
+  ctkDICOMIndexer::ScopedIndexing indexingBatch(*this, database);
   QStringList listOfFiles;
   QDir directory(directoryName);
 
   if(directory.exists("DICOMDIR"))
   {
-    addDicomdir(ctkDICOMDatabase,directoryName,destinationDirectoryName);
+    addDicomdir(database,directoryName,destinationDirectoryName);
   }
   else
   {
-    QDirIterator it(directoryName,QDir::Files,QDirIterator::Subdirectories);
+    QDir::Filters filters = QDir::Files;
+    if (includeHidden)
+    {
+      filters |= QDir::Hidden;
+    }
+    QDirIterator it(directoryName, filters, QDirIterator::Subdirectories);
     while(it.hasNext())
     {
       listOfFiles << it.next();
     }
     emit foundFilesToIndex(listOfFiles.count());
-    addListOfFiles(ctkDICOMDatabase,listOfFiles,destinationDirectoryName);
+    addListOfFiles(database,listOfFiles,destinationDirectoryName);
   }
 }
 
 //------------------------------------------------------------------------------
-void ctkDICOMIndexer::addListOfFiles(ctkDICOMDatabase& ctkDICOMDatabase,
+void ctkDICOMIndexer::addListOfFiles(ctkDICOMDatabase& database,
                                      const QStringList& listOfFiles,
                                      const QString& destinationDirectoryName)
 {
   Q_D(ctkDICOMIndexer);
+  ctkDICOMIndexer::ScopedIndexing indexingBatch(*this, database);
   QTime timeProbe;
   timeProbe.start();
   d->Canceled = false;
@@ -145,7 +152,7 @@ void ctkDICOMIndexer::addListOfFiles(ctkDICOMDatabase& ctkDICOMDatabase,
       emit this->progress(percent);
       lastReportedPercent = percent;
       }
-    this->addFile(ctkDICOMDatabase, filePath, destinationDirectoryName);
+    this->addFile(database, filePath, destinationDirectoryName);
     CurrentFileIndex++;
 
     if( d->Canceled )
@@ -158,15 +165,15 @@ void ctkDICOMIndexer::addListOfFiles(ctkDICOMDatabase& ctkDICOMDatabase,
       << QString("DICOM indexer has successfully processed %1 files [%2s]")
          .arg(CurrentFileIndex)
          .arg(QString::number(elapsedTimeInSeconds,'f', 2));
-  emit this->indexingComplete();
 }
 
 //------------------------------------------------------------------------------
-bool ctkDICOMIndexer::addDicomdir(ctkDICOMDatabase& ctkDICOMDatabase,
+bool ctkDICOMIndexer::addDicomdir(ctkDICOMDatabase& database,
                  const QString& directoryName,
                  const QString& destinationDirectoryName
                  )
 {
+  ctkDICOMIndexer::ScopedIndexing indexingBatch(*this, database);
   //Initialize dicomdir with directory path
   QString dcmFilePath = directoryName;
   dcmFilePath.append("/DICOMDIR");
@@ -254,15 +261,15 @@ bool ctkDICOMIndexer::addDicomdir(ctkDICOMDatabase& ctkDICOMDatabase,
            .arg(directoryName)
            .arg(QString::number(elapsedTimeInSeconds,'f', 2));
     emit foundFilesToIndex(listOfInstances.count());
-    addListOfFiles(ctkDICOMDatabase,listOfInstances,destinationDirectoryName);
+    addListOfFiles(database,listOfInstances,destinationDirectoryName);
   }
   return success;
 }
 
 //------------------------------------------------------------------------------
-void ctkDICOMIndexer::refreshDatabase(ctkDICOMDatabase& dicomDatabase, const QString& directoryName)
+void ctkDICOMIndexer::refreshDatabase(ctkDICOMDatabase& database, const QString& directoryName)
 {
-  Q_UNUSED(dicomDatabase);
+  Q_UNUSED(database);
   Q_UNUSED(directoryName);
   /*
    * Probably this should go to the database class as well
@@ -270,7 +277,7 @@ void ctkDICOMIndexer::refreshDatabase(ctkDICOMDatabase& dicomDatabase, const QSt
    * without using SQL directly
 
   /// get all filenames from the database
-  QSqlQuery allFilesQuery(dicomDatabase.database());
+  QSqlQuery allFilesQuery(database.database());
   QStringList databaseFileNames;
   QStringList filesToRemove;
   this->loggedExec(allFilesQuery, "SELECT Filename from Images;");
@@ -311,4 +318,33 @@ void ctkDICOMIndexer::cancel()
 {
   Q_D(ctkDICOMIndexer);
   d->Canceled = true;
+}
+
+//----------------------------------------------------------------------------
+void ctkDICOMIndexer::startIndexing(ctkDICOMDatabase& database)
+{
+  Q_D(ctkDICOMIndexer);
+  if (d->StartedIndexing == 0)
+  {
+    // Indexing has just been started
+    database.prepareInsert();
+  }
+  d->StartedIndexing++;
+}
+
+//----------------------------------------------------------------------------
+void ctkDICOMIndexer::endIndexing()
+{
+  Q_D(ctkDICOMIndexer);
+  d->StartedIndexing--;
+  if (d->StartedIndexing == 0)
+  {
+    // Indexing has just been completed
+    emit this->indexingComplete();
+  }
+  if (d->StartedIndexing < 0)
+  {
+    qWarning() << QString("ctkDICOMIndexer::endIndexing called without matching startIndexing");
+    d->StartedIndexing = 0;
+  }
 }

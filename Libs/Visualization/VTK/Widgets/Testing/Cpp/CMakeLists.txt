@@ -4,6 +4,7 @@ set(KIT ${PROJECT_NAME})
 # Tests
 #
 set(TEST_SOURCES
+  ctkVTKAbstractViewTest1.cpp
   ctkVTKColorTransferFunctionTest1.cpp
   ctkVTKDataSetArrayComboBoxTest1.cpp
   ctkVTKDataSetModelTest1.cpp
@@ -151,6 +152,7 @@ endif()
 # Add Tests
 #
 
+SIMPLE_TEST( ctkVTKAbstractViewTest1 )
 SIMPLE_TEST( ctkVTKColorTransferFunctionTest1 )
 SIMPLE_TEST( ctkVTKDataSetArrayComboBoxTest1 )
 SIMPLE_TEST( ctkVTKDataSetModelTest1 )
@@ -201,6 +203,7 @@ if(EXISTS "${CTKData_DIR}")
   set(baseline_relative_location Libs/Visualization/VTK/Widgets)
 
   macro(MAGNIFY_WIDGET_TEST TESTNAME TESTTYPE SIZE MAGNIFICATION)
+    set(${TESTNAME}${TESTTYPE}_TEST ${TESTNAME})
     SIMPLE_TEST_WITH_DATA(${TESTNAME}${TESTTYPE} ${baseline_relative_location}
       -T "${TESTTYPE}"
       -S "${SIZE}"

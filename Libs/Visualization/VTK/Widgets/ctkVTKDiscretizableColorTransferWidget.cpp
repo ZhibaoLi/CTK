@@ -23,6 +23,7 @@
 // CTK includes
 #include "ctkColorPickerButton.h"
 #include "ctkDoubleSlider.h"
+#include "ctkVTKOpenGLNativeWidget.h"
 #include "ctkVTKScalarsToColorsComboBox.h"
 #include "ctkVTKScalarsToColorsUtils.h"
 #include "ui_ctkVTKDiscretizableColorTransferWidget.h"
@@ -46,11 +47,6 @@
 #include <QWidgetAction>
 
 // VTK includes
-#if CTK_USE_QVTKOPENGLWIDGET
-#include <QVTKOpenGLWidget.h>
-#else
-#include <QVTKWidget.h>
-#endif
 #include <vtkCallbackCommand.h>
 #include <vtkContextScene.h>
 #include <vtkContextView.h>
@@ -64,6 +60,7 @@
 #include <vtkImageData.h>
 #include <vtkPiecewiseFunction.h>
 #include <vtkRenderer.h>
+#include <vtkRenderWindowInteractor.h>
 #include <vtkScalarsToColors.h>
 #include <vtkTable.h>
 
@@ -92,11 +89,8 @@ public:
   bool popRangesFromHistory(double* currentRange, double* visibleRange);
   void clearUndoHistory();
 
-#if CTK_USE_QVTKOPENGLWIDGET
-  QVTKOpenGLWidget* ScalarsToColorsView;
-#else
-  QVTKWidget* ScalarsToColorsView;
-#endif
+
+  ctkVTKOpenGLNativeWidget* ScalarsToColorsView;
 
   vtkSmartPointer<vtkScalarsToColorsContextItem> scalarsToColorsContextItem;
   vtkSmartPointer<vtkContextView> scalarsToColorsContextView;
@@ -159,11 +153,7 @@ void ctkVTKDiscretizableColorTransferWidgetPrivate::setupUi(QWidget* widget)
 
   this->Ui_ctkVTKDiscretizableColorTransferWidget::setupUi(widget);
 
-#if CTK_USE_QVTKOPENGLWIDGET
-  this->ScalarsToColorsView = new QVTKOpenGLWidget;
-#else
-  this->ScalarsToColorsView = new QVTKWidget;
-#endif
+  this->ScalarsToColorsView = new ctkVTKOpenGLNativeWidget;
   this->gridLayout->addWidget(this->ScalarsToColorsView, 2, 2, 5, 1);
 
   this->scalarsToColorsContextItem = vtkSmartPointer<vtkScalarsToColorsContextItem>::New();
@@ -172,7 +162,7 @@ void ctkVTKDiscretizableColorTransferWidgetPrivate::setupUi(QWidget* widget)
 
   this->scalarsToColorsContextView = vtkSmartPointer<vtkContextView> ::New();
 
-#if CTK_USE_QVTKOPENGLWIDGET
+#ifdef CTK_USE_QVTKOPENGLWIDGET
   vtkSmartPointer<vtkGenericOpenGLRenderWindow> renwin =
     vtkSmartPointer<vtkGenericOpenGLRenderWindow>::New();
   this->ScalarsToColorsView->SetRenderWindow(renwin);

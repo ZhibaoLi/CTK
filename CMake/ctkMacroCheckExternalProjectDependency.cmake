@@ -271,9 +271,15 @@ function(_sb_cmakevar_to_cmakearg cmake_varname_and_type cmake_arg_var has_cfg_i
   _sb_extract_varname_and_vartype(${cmake_varname_and_type} _varname _vartype)
 
   set(_var_value "${${_varname}}")
-  get_property(_value_set_in_cache CACHE ${_varname} PROPERTY VALUE SET)
-  if(_value_set_in_cache)
-    get_property(_var_value CACHE ${_varname} PROPERTY VALUE)
+
+  # Use cache value unless it is INTERNAL
+  if(_vartype STREQUAL "INTERNAL")
+    set(_vartype "STRING")
+  else()
+    get_property(_value_set_in_cache CACHE ${_varname} PROPERTY VALUE SET)
+    if(_value_set_in_cache)
+      get_property(_var_value CACHE ${_varname} PROPERTY VALUE)
+    endif()
   endif()
 
   set(_has_cfg_intdir FALSE)
@@ -437,6 +443,9 @@ function(_sb_get_external_project_arguments proj varname)
   # Automatically propagate CMake options
   foreach(_cmake_option IN ITEMS
     CMAKE_EXPORT_COMPILE_COMMANDS
+    CMAKE_JOB_POOL_COMPILE
+    CMAKE_JOB_POOL_LINK
+    CMAKE_JOB_POOLS
     )
     if(DEFINED ${_cmake_option})
       list(APPEND _ep_arguments CMAKE_CACHE_ARGS
@@ -449,7 +458,8 @@ function(_sb_get_external_project_arguments proj varname)
     get_property(${proj}_EP_PROPERTY_${property} GLOBAL PROPERTY ${proj}_EP_PROPERTY_${property})
     get_property(${_ALL_PROJECT_IDENTIFIER}_EP_PROPERTY_${property} GLOBAL PROPERTY ${_ALL_PROJECT_IDENTIFIER}_EP_PROPERTY_${property})
     set(_all ${${proj}_EP_PROPERTY_${property}} ${${_ALL_PROJECT_IDENTIFIER}_EP_PROPERTY_${property}})
-    if(_all)
+    list(LENGTH _all _num_properties)
+    if(_num_properties GREATER 0)
       list(APPEND _ep_arguments ${property} ${_all})
     endif()
   endforeach()

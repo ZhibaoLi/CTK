@@ -48,8 +48,12 @@ public:
   /// Scan the directory using Dcmtk and populate the database with all the
   /// DICOM images accordingly.
   ///
+  /// If includeHidden is set to false then hidden files and folders are not added.
+  /// DICOM folders may be created based on series or study name, which sometimes start
+  /// with a . character, therefore it is advisable to include hidden files and folders.
+  ///
   Q_INVOKABLE void addDirectory(ctkDICOMDatabase& database, const QString& directoryName,
-                    const QString& destinationDirectoryName = "");
+                    const QString& destinationDirectoryName = "", bool includeHidden = true);
 
   ///
   /// \brief Adds directory to database by using DICOMDIR and optionally copies files to
@@ -73,7 +77,10 @@ public:
 
   ///
   /// \brief Adds a file to database and optionally copies the file to
-  /// destinationDirectory.
+  /// the database folder.
+  /// If destinationDirectory is non-empty string then the file is copied
+  /// to the database folder (exact value of destinationDirectoryName does not matter,
+  /// only if the string is empty or not).
   ///
   /// Scan the file using Dcmtk and populate the database with all the
   /// DICOM fields accordingly.
@@ -90,6 +97,49 @@ public:
   /// before returning control.
   ///
   Q_INVOKABLE void waitForImportFinished();
+
+  /// Call this before performing multiple add...() calls in one batch
+  /// to slightly increase indexing performance and to make only a single
+  /// indexingComplete() signal emitted for multiple add...() operations.
+  /// 
+  /// If startIndexing() is called before a batch of insertions, then
+  /// endIndexing() method must be called after the insertions are completed.
+  ///
+  /// It is recommended to use ScopedIndexing helper class to call startIndexing
+  /// and endIndexing automatically.
+  Q_INVOKABLE void startIndexing(ctkDICOMDatabase& database);
+
+  /// Call this method after batch insertion is completed, and only if startIndexing()
+  /// was called before batch insertion was started.
+  Q_INVOKABLE void endIndexing();
+
+  /// Helper class to automatically call startIndexing and endIndexing.
+  /// Its constructor calls startIndexing and its destructor calls endIndexing.
+  ///
+  /// Example:
+  ///   ...
+  ///   {
+  ///     ctkDICOMIndexer::ScopedIndexing indexingBatch(indexer, database); // this calls startIndexing
+  ///     indexer.addDirectory(database, dir1);
+  ///     indexer.addDirectory(database, dir2);
+  ///     indexer.addDirectory(database, dir3);
+  ///   } // endIndexing is called when indexingBatch goes out of scope
+  ///
+  class ScopedIndexing
+  {
+    public:
+    ScopedIndexing(ctkDICOMIndexer& indexer, ctkDICOMDatabase& database)
+    {
+      this->Indexer = &indexer;
+      this->Indexer->startIndexing(database);
+    }
+    ~ScopedIndexing()
+    {
+      this->Indexer->endIndexing();
+    }
+    private:
+    ctkDICOMIndexer* Indexer;
+  };
 
 Q_SIGNALS:
   void foundFilesToIndex(int);
